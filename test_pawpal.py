@@ -90,6 +90,16 @@ def test_high_priority_before_low(owner, pet):
     prioritized = scheduler.prioritize_tasks()
     assert prioritized[0].title == "Feeding"
 
+def test_owner_preference_boosts_matching_time_block(pet):
+    owner = Owner("Jordan", available_minutes=60, preferences=["evening"])
+    tasks = [
+        CareTask("Afternoon play", 10, "medium", preferred_time="afternoon"),
+        CareTask("Evening groom", 10, "medium", preferred_time="evening"),
+    ]
+    scheduler = Scheduler(owner, pet, tasks)
+    prioritized = scheduler.prioritize_tasks()
+    assert prioritized[0].title == "Evening groom"
+
 
 # --- Scheduler.build_plan ---
 
@@ -138,3 +148,11 @@ def test_explain_plan_lists_scheduled_tasks(owner, pet, basic_tasks):
     explanation = scheduler.explain_plan(plan)
     for st in plan.scheduled_tasks:
         assert st.task.title in explanation
+
+def test_explain_plan_mentions_owner_preference_match(pet):
+    owner = Owner("Jordan", available_minutes=60, preferences=["evening"])
+    tasks = [CareTask("Evening groom", 20, "medium", preferred_time="evening")]
+    scheduler = Scheduler(owner, pet, tasks)
+    plan = scheduler.build_plan()
+    explanation = scheduler.explain_plan(plan)
+    assert "matches owner preference" in explanation

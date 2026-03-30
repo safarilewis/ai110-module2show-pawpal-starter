@@ -10,6 +10,11 @@ col1, col2 = st.columns(2)
 with col1:
     owner_name = st.text_input("Owner name", value="Jordan")
     available_minutes = st.number_input("Available time (minutes)", min_value=10, max_value=480, value=60)
+    owner_preferred_time = st.selectbox(
+        "Owner preferred time block",
+        ["none", "morning", "afternoon", "evening"],
+        help="Tasks matching this time block get a small scheduling boost.",
+    )
 with col2:
     pet_name = st.text_input("Pet name", value="Mochi")
     species = st.selectbox("Species", ["dog", "cat", "other"])
@@ -73,7 +78,8 @@ if st.button("Generate schedule"):
     if not st.session_state.tasks:
         st.warning("Add at least one task first.")
     else:
-        owner = Owner(owner_name, available_minutes)
+        preferences = [] if owner_preferred_time == "none" else [owner_preferred_time]
+        owner = Owner(owner_name, available_minutes, preferences=preferences)
         pet = Pet(pet_name, species, age)
         scheduler = Scheduler(owner, pet, st.session_state.tasks)
         plan = scheduler.build_plan()

@@ -73,7 +73,11 @@ class Scheduler:
     def prioritize_tasks(self):
         return sorted(
             self.tasks,
-            key=lambda t: (t.required, PRIORITY_RANK.get(t.priority, 0)),
+            key=lambda t: (
+                t.required,
+                self._preference_score(t),
+                PRIORITY_RANK.get(t.priority, 0),
+            ),
             reverse=True,
         )
 
@@ -109,8 +113,15 @@ class Scheduler:
         parts = []
         if task.required:
             parts.append("required task")
+        if self._preference_score(task):
+            parts.append("matches owner preference")
         parts.append(f"{task.priority} priority")
         if task.preferred_time:
             parts.append(f"preferred in the {task.preferred_time}")
         parts.append(f"{remaining_minutes} min remaining when scheduled")
         return ", ".join(parts)
+
+    def _preference_score(self, task):
+        if task.preferred_time and task.preferred_time in self.owner.preferences:
+            return 1
+        return 0
