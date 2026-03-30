@@ -69,6 +69,13 @@ def test_daily_plan_summary_contains_task_titles(owner, pet, basic_tasks):
     for st in plan.scheduled_tasks:
         assert st.task.title in summary
 
+def test_daily_plan_summary_includes_reason_text(owner, pet):
+    tasks = [CareTask("Medication", 5, "high", required=True)]
+    scheduler = Scheduler(owner, pet, tasks)
+    plan = scheduler.build_plan()
+    summary = plan.summary()
+    assert "Reason:" in summary
+
 
 # --- Scheduler.prioritize_tasks ---
 
@@ -99,6 +106,16 @@ def test_owner_preference_boosts_matching_time_block(pet):
     scheduler = Scheduler(owner, pet, tasks)
     prioritized = scheduler.prioritize_tasks()
     assert prioritized[0].title == "Evening groom"
+
+def test_required_task_beats_preference_match(pet):
+    owner = Owner("Jordan", available_minutes=60, preferences=["evening"])
+    tasks = [
+        CareTask("Evening groom", 10, "medium", preferred_time="evening"),
+        CareTask("Medication", 5, "low", required=True),
+    ]
+    scheduler = Scheduler(owner, pet, tasks)
+    prioritized = scheduler.prioritize_tasks()
+    assert prioritized[0].title == "Medication"
 
 
 # --- Scheduler.build_plan ---
@@ -132,6 +149,27 @@ def test_preferred_time_slot_respected(owner, pet):
     assert len(plan.scheduled_tasks) == 1
     assert plan.scheduled_tasks[0].start_time.hour == 18
 
+def test_task_without_preferred_time_defaults_to_morning(owner, pet):
+    tasks = [CareTask("Feeding", 10, "high")]
+    scheduler = Scheduler(owner, pet, tasks)
+    plan = scheduler.build_plan()
+    assert len(plan.scheduled_tasks) == 1
+    assert plan.scheduled_tasks[0].start_time.hour == 8
+    assert plan.scheduled_tasks[0].start_time.minute == 0
+
+def test_tasks_in_same_time_slot_schedule_sequentially(owner, pet):
+    tasks = [
+        CareTask("Breakfast", 10, "high", preferred_time="morning"),
+        CareTask("Walk", 20, "medium", preferred_time="morning"),
+    ]
+    scheduler = Scheduler(owner, pet, tasks)
+    plan = scheduler.build_plan()
+    assert len(plan.scheduled_tasks) == 2
+    assert plan.scheduled_tasks[0].start_time.hour == 8
+    assert plan.scheduled_tasks[0].start_time.minute == 0
+    assert plan.scheduled_tasks[1].start_time.hour == 8
+    assert plan.scheduled_tasks[1].start_time.minute == 10
+
 
 # --- Scheduler.explain_plan ---
 
@@ -156,3 +194,10 @@ def test_explain_plan_mentions_owner_preference_match(pet):
     plan = scheduler.build_plan()
     explanation = scheduler.explain_plan(plan)
     assert "matches owner preference" in explanation
+
+def test_explain_plan_reports_available_time(owner, pet):
+    tasks = [CareTask("Feeding", 10, "high")]
+    scheduler = Scheduler(owner, pet, tasks)
+    plan = scheduler.build_plan()
+    explanation = scheduler.explain_plan(plan)
+    assert "Available time: 60 minutes" in explanation
