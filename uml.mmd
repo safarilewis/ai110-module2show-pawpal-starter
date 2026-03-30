@@ -1,0 +1,50 @@
+classDiagram
+    class CareTask {
+        +str title
+        +int duration_minutes
+        +str priority
+        +str task_type
+        +bool required
+        +str preferred_time
+        +__repr__() str
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +int age
+    }
+
+    class Owner {
+        +str name
+        +int available_minutes
+        +list~str~ preferences
+    }
+
+    class ScheduledTask {
+        +CareTask task
+        +str start_time
+        +str reason
+    }
+
+    class DailyPlan {
+        +list~ScheduledTask~ scheduled_tasks
+        +int total_minutes
+        +summary() str
+    }
+
+    class Scheduler {
+        +Owner owner
+        +Pet pet
+        +list~CareTask~ tasks
+        +prioritize_tasks() list~CareTask~
+        +build_plan() DailyPlan
+        +explain_plan(plan: DailyPlan) str
+    }
+
+    Scheduler --> Owner : has
+    Scheduler --> Pet : has
+    Scheduler --> CareTask : takes list of
+    Scheduler --> DailyPlan : produces
+    DailyPlan --> ScheduledTask : contains
+    ScheduledTask --> CareTask : wraps
