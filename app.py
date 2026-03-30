@@ -36,8 +36,9 @@ if st.session_state.edit_task_index is not None and 0 <= st.session_state.edit_t
 
 priority_options = ["low", "medium", "high"]
 time_options = ["none", "morning", "afternoon", "evening"]
+frequency_options = ["once", "daily", "weekly"]
 
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 with col1:
     task_title = st.text_input(
         "Title",
@@ -64,6 +65,12 @@ with col4:
     )
 with col5:
     required = st.checkbox("Required", value=editing_task.required if editing_task else False)
+with col6:
+    frequency = st.selectbox(
+        "Frequency",
+        frequency_options,
+        index=frequency_options.index(editing_task.frequency) if editing_task else 0,
+    )
 
 action_col1, action_col2 = st.columns(2)
 with action_col1:
@@ -75,6 +82,7 @@ with action_col1:
             priority=priority,
             required=required,
             preferred_time=preferred_time if preferred_time != "none" else None,
+            frequency=frequency,
         )
         if editing_task:
             st.session_state.tasks[st.session_state.edit_task_index] = task
@@ -97,6 +105,7 @@ if st.session_state.tasks:
             "Priority": t.priority,
             "Preferred time": t.preferred_time or "any",
             "Required": t.required,
+            "Frequency": t.frequency,
         }
         for t in st.session_state.tasks
     ])
@@ -150,6 +159,14 @@ if st.button("Generate schedule"):
             with st.container(border=True):
                 st.markdown(f"**{start} – {end}  {st_task.task.title}**  `{st_task.task.priority}`")
                 st.caption(f"Reason: {st_task.reason}")
+
+        conflicts = scheduler.detect_conflicts(plan)
+        st.markdown("### Conflict Check")
+        if conflicts:
+            for warning in conflicts:
+                st.warning(warning)
+        else:
+            st.success("No scheduling conflicts detected.")
 
         st.markdown("### Explanation")
         st.text(scheduler.explain_plan(plan))

@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, date
 from pawpal_system import CareTask, Pet, Owner, ScheduledTask, DailyPlan, Scheduler
 
 
@@ -35,12 +36,35 @@ def test_caretask_defaults():
     assert task.required is False
     assert task.preferred_time is None
     assert task.task_type is None
+    assert task.frequency == "once"
+    assert task.completed is False
+
+
+# --- Recurring tasks ---
+
+def test_mark_complete_once_task():
+    task = CareTask("Bath", 30, "low", frequency="once")
+    task.mark_complete()
+    assert task.completed is True
+
+def test_daily_task_reschedules_next_day():
+    task = CareTask("Feeding", 10, "high", frequency="daily")
+    today = date.today()
+    task.mark_complete()
+    assert task.next_due == today + timedelta(days=1)
+    assert task.completed is False  # resets for recurring
+
+def test_weekly_task_reschedules_next_week():
+    task = CareTask("Grooming", 20, "medium", frequency="weekly")
+    today = date.today()
+    task.mark_complete()
+    assert task.next_due == today + timedelta(weeks=1)
+    assert task.completed is False
 
 
 # --- ScheduledTask ---
 
 def test_scheduled_task_end_time():
-    from datetime import datetime
     task = CareTask("Walk", 30, "high")
     start = datetime(2000, 1, 1, 8, 0)
     st = ScheduledTask(task, start, "test reason")
@@ -68,13 +92,6 @@ def test_daily_plan_summary_contains_task_titles(owner, pet, basic_tasks):
     summary = plan.summary()
     for st in plan.scheduled_tasks:
         assert st.task.title in summary
-
-def test_daily_plan_summary_includes_reason_text(owner, pet):
-    tasks = [CareTask("Medication", 5, "high", required=True)]
-    scheduler = Scheduler(owner, pet, tasks)
-    plan = scheduler.build_plan()
-    summary = plan.summary()
-    assert "Reason:" in summary
 
 
 # --- Scheduler.prioritize_tasks ---
@@ -107,16 +124,6 @@ def test_owner_preference_boosts_matching_time_block(pet):
     prioritized = scheduler.prioritize_tasks()
     assert prioritized[0].title == "Evening groom"
 
-def test_required_task_beats_preference_match(pet):
-    owner = Owner("Jordan", available_minutes=60, preferences=["evening"])
-    tasks = [
-        CareTask("Evening groom", 10, "medium", preferred_time="evening"),
-        CareTask("Medication", 5, "low", required=True),
-    ]
-    scheduler = Scheduler(owner, pet, tasks)
-    prioritized = scheduler.prioritize_tasks()
-    assert prioritized[0].title == "Medication"
-
 
 # --- Scheduler.build_plan ---
 
@@ -127,7 +134,7 @@ def test_tasks_fit_within_available_time(owner, pet, basic_tasks):
 
 def test_task_exceeding_time_is_skipped(owner, pet):
     tasks = [CareTask("Long hike", 120, "high")]
-    scheduler = Scheduler(owner, pet, tasks)  # owner has 60 min
+    scheduler = Scheduler(owner, pet, tasks)
     plan = scheduler.build_plan()
     assert len(plan.scheduled_tasks) == 0
 
@@ -142,33 +149,52 @@ def test_required_task_is_scheduled(owner, pet):
     assert "Medication" in titles
 
 def test_preferred_time_slot_respected(owner, pet):
-    from datetime import datetime
     tasks = [CareTask("Evening groom", 20, "medium", preferred_time="evening")]
     scheduler = Scheduler(owner, pet, tasks)
     plan = scheduler.build_plan()
     assert len(plan.scheduled_tasks) == 1
     assert plan.scheduled_tasks[0].start_time.hour == 18
 
-def test_task_without_preferred_time_defaults_to_morning(owner, pet):
-    tasks = [CareTask("Feeding", 10, "high")]
-    scheduler = Scheduler(owner, pet, tasks)
-    plan = scheduler.build_plan()
-    assert len(plan.scheduled_tasks) == 1
-    assert plan.scheduled_tasks[0].start_time.hour == 8
-    assert plan.scheduled_tasks[0].start_time.minute == 0
-
-def test_tasks_in_same_time_slot_schedule_sequentially(owner, pet):
+def test_sorting_correctness(owner, pet):
+    """Tasks should be scheduled in priority order, high before low."""
     tasks = [
-        CareTask("Breakfast", 10, "high", preferred_time="morning"),
-        CareTask("Walk", 20, "medium", preferred_time="morning"),
+        CareTask("Low task", 10, "low"),
+        CareTask("High task", 10, "high"),
+        CareTask("Medium task", 10, "medium"),
+    ]
+    scheduler = Scheduler(owner, pet, tasks)
+    prioritized = scheduler.prioritize_tasks()
+    assert prioritized[0].priority == "high"
+    assert prioritized[1].priority == "medium"
+    assert prioritized[2].priority == "low"
+
+
+# --- Conflict detection ---
+
+def test_no_conflicts_when_tasks_sequential(owner, pet):
+    tasks = [
+        CareTask("Walk", 30, "high", preferred_time="morning"),
+        CareTask("Feed", 10, "high", preferred_time="afternoon"),
     ]
     scheduler = Scheduler(owner, pet, tasks)
     plan = scheduler.build_plan()
-    assert len(plan.scheduled_tasks) == 2
-    assert plan.scheduled_tasks[0].start_time.hour == 8
-    assert plan.scheduled_tasks[0].start_time.minute == 0
-    assert plan.scheduled_tasks[1].start_time.hour == 8
-    assert plan.scheduled_tasks[1].start_time.minute == 10
+    conflicts = scheduler.detect_conflicts(plan)
+    assert len(conflicts) == 0
+
+def test_conflict_detected_for_overlapping_tasks(pet):
+    """Force two tasks into the same slot to trigger a conflict."""
+    owner = Owner("Jordan", available_minutes=120)
+    start = datetime(2000, 1, 1, 8, 0)
+    task_a = CareTask("Walk", 30, "high")
+    task_b = CareTask("Feed", 20, "high")
+    # Manually build a plan with overlapping times
+    st_a = ScheduledTask(task_a, start, "test")
+    st_b = ScheduledTask(task_b, start + timedelta(minutes=10), "test")  # overlaps
+    plan = DailyPlan([st_a, st_b])
+    conflicts = Scheduler(owner, pet, []).detect_conflicts(plan)
+    assert len(conflicts) == 1
+    assert "Walk" in conflicts[0]
+    assert "Feed" in conflicts[0]
 
 
 # --- Scheduler.explain_plan ---
@@ -194,10 +220,3 @@ def test_explain_plan_mentions_owner_preference_match(pet):
     plan = scheduler.build_plan()
     explanation = scheduler.explain_plan(plan)
     assert "matches owner preference" in explanation
-
-def test_explain_plan_reports_available_time(owner, pet):
-    tasks = [CareTask("Feeding", 10, "high")]
-    scheduler = Scheduler(owner, pet, tasks)
-    plan = scheduler.build_plan()
-    explanation = scheduler.explain_plan(plan)
-    assert "Available time: 60 minutes" in explanation

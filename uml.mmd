@@ -6,6 +6,10 @@ classDiagram
         +str task_type
         +bool required
         +str preferred_time
+        +str frequency
+        +bool completed
+        +date next_due
+        +mark_complete() void
         +__repr__() str
     }
 
@@ -23,8 +27,9 @@ classDiagram
 
     class ScheduledTask {
         +CareTask task
-        +str start_time
+        +datetime start_time
         +str reason
+        +end_time() datetime
     }
 
     class DailyPlan {
@@ -39,12 +44,15 @@ classDiagram
         +list~CareTask~ tasks
         +prioritize_tasks() list~CareTask~
         +build_plan() DailyPlan
+        +detect_conflicts(plan: DailyPlan) list~str~
         +explain_plan(plan: DailyPlan) str
+        -_reason(task: CareTask, remaining_minutes: int) str
+        -_preference_score(task: CareTask) int
     }
 
-    Scheduler --> Owner : has
-    Scheduler --> Pet : has
-    Scheduler --> CareTask : takes list of
-    Scheduler --> DailyPlan : produces
+    Scheduler --> Owner : uses
+    Scheduler --> Pet : plans for
+    Scheduler --> CareTask : prioritizes
+    Scheduler --> DailyPlan : builds
     DailyPlan --> ScheduledTask : contains
-    ScheduledTask --> CareTask : wraps
+    ScheduledTask --> CareTask : schedules
